@@ -182,10 +182,10 @@ uint[16] round(uint[16] state, uint data_last, uint data, uint data_next, uint l
     return state;
 }
 
-uint[2] finalize(uint[16] state) {
-    uint buf[4];
+uint finalize_hi(uint[16] state) {
+    uint buf[2];
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 2; i++) {
         buf[i] = state[0];
     }
 
@@ -203,32 +203,44 @@ uint[2] finalize(uint[16] state) {
         else {
             buf[1] = csum(buf[1], data, i);
         }
+    }
 
-        tmp = (data & 0x02) >> 1;
+    return csum(buf[0], buf[1], 16) & 0xFFFF;
+}
+
+uint finalize_lo(uint[16] state) {
+    uint buf[2];
+
+    for (int i = 0; i < 2; i++) {
+        buf[i] = state[0];
+    }
+
+    for (uint i = 0; i < 16; i++) {
+        uint data = state[i];
+
+        uint tmp = (data & 0x02) >> 1;
         uint tmp2 = data & 0x01;
 
         if (tmp == tmp2) {
-            buf[2] += data;
+            buf[0] += data;
         }
         else {
-            buf[2] = csum(buf[2], data, i);
+            buf[0] = csum(buf[0], data, i);
         }
 
         if (tmp2 == 1) {
-            buf[3] ^= data;
+            buf[1] ^= data;
         }
         else {
-            buf[3] = csum(buf[3], data, i);
+            buf[1] = csum(buf[1], data, i);
         }
     }
 
-    uint res[2];
-    res[1] = csum(buf[0], buf[1], 16) & 0xFFFF;
-    res[0] = buf[3] ^ buf[2];
-    return res;
+
+    return buf[0] ^ buf[1];
 }
 
-uint[2] crunch(uint[16] state_in, uint hi, uint lo) {
+uint[2] crunch(uint[16] state_in, uint hi, uint lo, uint target_hi, uint target_lo) {
     uint state[16];
     for (int i = 0; i < 16; i++) {
         state[i] = state_in[i];
@@ -248,15 +260,22 @@ uint[2] crunch(uint[16] state_in, uint hi, uint lo) {
 
     state = round(state, data_last, data, data_next, loop_count);
 
-    return finalize(state);
+    uint res[2];
+    res[0] = 0;
+    res[1] = finalize_hi(state);
+    if (res[1] == target_hi) {
+        res[0] = finalize_lo(state);
+    }
+
+    return res;
 }
 "#)
 .with_kernel_code(
 r#"
     uint y = y_offset;
     uint x = x_offset + gl_GlobalInvocationID.x;
-    uint local_result[2] = crunch(state_in, y, x);
-    if (local_result[1] == target_hi && local_result[0] == target_lo) {
+    uint local_result[2] = crunch(state_in, y, x, target_hi, target_lo);
+    if (local_result[0] == target_lo) {
         if (atomicOr(result[2], 1) == 0) {
             result[0] = x;
             result[1] = y;
