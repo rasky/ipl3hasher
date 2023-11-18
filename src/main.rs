@@ -102,12 +102,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // create some data on GPU
     // even mutate it once loaded to GPU
     //let mut state: DeviceBox<[u32]> = vec![0; 16].as_device_boxed_mut()?;
-    let mut res: DeviceBox<[u32]> = vec![0u32, 0u32].as_device_boxed_mut()?;
+    let mut res: DeviceBox<[u32]> = vec![0u32, 0u32, 0u32].as_device_boxed_mut()?;
     let mut x_off_src = 0u64;
     let mut y_off_src = opts.init as u64;
     let mut x_off: DeviceBox<u32> = 0u32.into_device_boxed_mut()?;
     let mut y_off: DeviceBox<u32> = 0u32.into_device_boxed_mut()?;
-    let mut finished: DeviceBox<[u32]> = vec![0u32].as_device_boxed_mut()?;
 
     // compile GslKernel to SPIR-V
     // then, we can either inspect the SPIR-V or finish the compilation by generating a DeviceFnMut
@@ -117,8 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .param::<[u32], _>("uint[16] state_in")
     .param_mut::<u32, _>("uint x_offset")
     .param_mut::<u32, _>("uint y_offset")
-    .param_mut::<[u32], _>("uint[1] finished")
-    .param_mut::<[u32], _>("uint[2] result")
+    .param_mut::<[u32], _>("uint[3] result")
     .with_const("uint magic", "0x95DACFDC")
     .with_const("uint target_hi", format!("{}", target_high))
     .with_const("uint target_lo", format!("{}", target_low))
@@ -259,7 +257,7 @@ r#"
     uint x = x_offset + gl_GlobalInvocationID.x;
     uint local_result[2] = crunch(state_in, y, x);
     if (local_result[1] == target_hi && local_result[0] == target_lo) {
-        if (atomicOr(finished[0], 1) == 0) {
+        if (atomicOr(result[2], 1) == 0) {
             result[0] = x;
             result[1] = y;
         }
@@ -302,11 +300,10 @@ r#"
                     &state_in,
                     &mut x_off,
                     &mut y_off,
-                    &mut finished,
                     &mut res
                 ))?;
             }
-            finished_src = futures::executor::block_on(finished.get())?[0] == 1;
+            finished_src = futures::executor::block_on(res.get())?[2] == 1;
             if finished_src {
                 break;
             }
@@ -339,7 +336,8 @@ r#"
 
     // download from GPU and print out
     if finished_src {
-        println!("{:#X?}", futures::executor::block_on(res.get())?);
+        let res2 = futures::executor::block_on(res.get())?;
+        println!("{:#X?}", res2);
     } else {
         println!("sorry, no dice");
     }
