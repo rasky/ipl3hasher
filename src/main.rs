@@ -138,99 +138,6 @@ uint csum(uint op1, uint op2, uint op3) {
     return hi - lo;
 }
 
-uint[16] round(uint[16] state, uint data_last, uint data, uint data_next, uint loop_count) {
-    state[0] += csum(uint(0x3EF - loop_count), data, loop_count);
-    state[1] = csum(state[1], data, loop_count);
-    state[2] ^= data;
-    state[3] += csum(data + 5, 0x6c078965, loop_count);
-
-    if (data_last < data) {
-        state[9] = csum(state[9], data, loop_count);
-    }
-    else {
-        state[9] += data;
-    }
-
-    state[4] += ((data << (0x20 - (data_last & 0x1f))) | (data >> (data_last & 0x1f)));
-    state[7] = csum(state[7], ((data >> (0x20 - (data_last & 0x1f))) | (data << (data_last & 0x1f))), loop_count);
-
-    if (data < state[6]) {
-        state[6] = (data + loop_count) ^ (state[3] + state[6]);
-    }
-    else {
-        state[6] = (state[4] + data) ^ state[6];
-    }
-
-    state[5] += (data >> (0x20 - (data_last >> 27))) | (data << (data_last >> 27));
-    state[8] = csum(state[8], (data << (0x20 - (data_last >> 27))) | (data >> (data_last >> 27)), loop_count);
-
-    if (loop_count == 0x3F0) return state;
-
-    uint tmp1 = csum(state[15], (data >> (0x20 - (data_last >> 27))) | (data << (data_last >> 27)), loop_count);
-    state[15] = csum(tmp1, (data_next << (data >> 27)) | (data_next >> (0x20 - (data >> 27))), loop_count);
-
-    uint tmp2 = ((data << (0x20 - (data_last & 0x1f))) | (data >> (data_last & 0x1f)));
-    uint tmp3 = csum(state[14], tmp2, loop_count);
-    state[14] = csum(tmp3, (data_next >> (data & 0x1f)) | (data_next << (0x20 - (data & 0x1f))), loop_count);
-
-    state[13] += ((data >> (data & 0x1f)) | (data << (0x20 - (data & 0x1f)))) + ((data_next >> (data_next & 0x1f)) | (data_next << (0x20 - (data_next & 0x1f))));
-    state[10] = csum(state[10] + data, data_next, loop_count);
-    state[11] = csum(state[11] ^ data, data_next, loop_count);
-    state[12] += (state[8] ^ data);
-
-    return state;
-}
-
-
-uint[16] round_y(uint[16] state, uint data_last, uint data) {
-    uint y_cached[16];
-    y_cached[0] = state[0] + csum(uint(0x3EF - 1007), data, 1007);
-    y_cached[1] = csum(state[1], data, 1007);
-    y_cached[2] = state[2] ^ data;
-    y_cached[3] = state[3] + csum(data + 5, 0x6c078965, 1007);
-
-    if (data_last < data) {
-        y_cached[9] = csum(state[9], data, 1007);
-    }
-    else {
-        y_cached[9] = state[9] + data;
-    }
-
-    y_cached[4] = state[4] + ((data << (0x20 - (data_last & 0x1f))) | (data >> (data_last & 0x1f)));
-    // state[7] = csum(state[7], ((data >> (0x20 - (data_last & 0x1f))) | (data << (data_last & 0x1f))), 1007);
-    y_cached[7] = csum(state[7], ((data >> (0x20 - (data_last & 0x1f))) | (data << (data_last & 0x1f))), 1007);
-
-    if (data < state[6]) {
-        y_cached[6] = (data + 1007) ^ (y_cached[3] + state[6]);
-    }
-    else {
-        y_cached[6] = (y_cached[4] + data) ^ state[6];
-    }
-
-    y_cached[5] = state[5] + ((data >> (0x20 - (data_last >> 27))) | (data << (data_last >> 27)));
-    y_cached[8] = csum(state[8], (data << (0x20 - (data_last >> 27))) | (data >> (data_last >> 27)), 1007);
-
-    // Now, we can't actually do all of the second half without data_next, but we can cache some of it
-
-    // was tmp1
-    //uint tmp1 = csum(state[15], (data_y >> (0x20 - (data_last >> 27))) | (data_y << (data_last >> 27)), 1007);
-    y_cached[15] = csum(state[15], (data >> (0x20 - (data_last >> 27))) | (data << (data_last >> 27)), 1007);
-    //state[15] = csum(tmp1, (data_x << (dataY >> 27)) | (data_x >> (0x20 - (data_y >> 27))), 1007);
-
-
-    // was tmp2
-    uint tmp2 = ((data << (0x20 - (data_last & 0x1f))) | (data >> (data_last & 0x1f)));
-    y_cached[14] = csum(state[14], tmp2, 1007);
-
-    y_cached[13] = state[13] + ((data >> (data & 0x1f)) | (data << (0x20 - (data & 0x1f))));
-
-    y_cached[10] = state[10] + data;
-    y_cached[11] = state[11] ^ data;
-    y_cached[12] = state[12] + (y_cached[8] ^ data);
-
-    return y_cached;
-}
-
 uint[16] round_x(uint[16] state, uint data_x, uint data_y) {
     uint y_top5bits = data_y >> 27;
     uint y_bottom5bits = data_y & 0x1f;
@@ -334,49 +241,11 @@ uint finalize_lo(uint[16] state) {
     return buf[0] ^ buf[1];
 }
 
-uint[16] crunch(uint[16] state_in, uint hi, uint lo) {
-    uint state[16];
-    for (int i = 0; i < 16; i++) {
-        state[i] = state_in[i];
-    }
-
-    uint data_last = 0;
-    uint data = hi;
-    uint data_next = lo;
-    uint loop_count = 1007;
-
-    state = round(state, data_last, data, data_next, loop_count);
-
-    data_last = data;
-    data = data_next;
-    data_next = 0;
-    loop_count = 1008;
-
-    state = round(state, data_last, data, data_next, loop_count);
-
-    return state;
-}
 "#)
 .with_kernel_code(
 r#"
     uint y = y_offset;
     uint x = x_offset + gl_GlobalInvocationID.x;
-    //uint state_y[16] = round_y(state_in, 0, y);
-    //uint state[16] = round_x(state_y, x, y);
-    // uint state2[16] = crunch(state_in, y, x);
-    // for (int i = 0; i < 16; i++) {
-    //     if (state[i] != state2[i]) {
-    //         if (atomicOr(result[2], 1 << i) == 0) {
-    //             result[0] = x;
-    //             result[1] = y;
-    //             for (int j = i+1; j < 16; j++) {
-    //                 if (state[j] != state2[j]) {
-    //                     atomicOr(result[2], 1 << j);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
 
     uint state[16] = round_x(state_in, x, y);
     if (finalize_hi(state) == target_hi) {
