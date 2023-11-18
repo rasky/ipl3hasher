@@ -7,16 +7,19 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-emu_core = { path="emu/emu_core", features = ["glsl-compile"] }
+#emu_core = { path="emu/emu_core", features = ["glsl-compile"] }
+emu_core = { version="^0", features = ["glsl-compile"] }
 emu_glsl = "0.1.0"
 zerocopy = "0.2.0"
 futures = "0.3.1"
 derive_more = "0.99.2"
-shaderc = { version = "0.6.2" }
+shaderc = { version = "^0" }
 gumdrop = "0.8.0"
 byteorder = "1.3"
 rand = "0.7.3"
 rayon = "1.3"
+
+
 
 [[bin]]
 name = "gpu3hasher"
