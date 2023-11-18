@@ -167,7 +167,56 @@ impl<E: ByteOrder> ChecksumInfo<E> {
             if loop_idx == count { break; }
         }
     }
-    
+
+    pub fn round_y(&mut self) {
+
+        let data_last =  E::read_u32(&self.rom[(0xff4)..]);
+        let data = E::read_u32(&self.rom[(0xff8)..]);
+
+        self.buffer[0] = self.buffer[0] + checksum_function(0x3EF - 1007, data, 1007);
+        self.buffer[1] = checksum_function(self.buffer[1], data, 1007);
+        self.buffer[2] = self.buffer[2] ^ data;
+        self.buffer[3] = self.buffer[3] + checksum_function(data + 5, 0x6c078965, 1007);
+
+        if (data_last < data) {
+            self.buffer[9] = checksum_function(self.buffer[9], data, 1007);
+        }
+        else {
+            self.buffer[9] = self.buffer[9] + data;
+        }
+
+        self.buffer[4] = self.buffer[4] + ((data << (0x20 - (data_last & 0x1f))) | (data >> (data_last & 0x1f)));
+        // state[7] = csum(state[7], ((data >> (0x20 - (data_last & 0x1f))) | (data << (data_last & 0x1f))), 1007);
+        self.buffer[7] = checksum_function(self.buffer[7], ((data >> (0x20 - (data_last & 0x1f))) | (data << (data_last & 0x1f))), 1007);
+
+        if (data < self.buffer[6]) {
+            self.buffer[6] = (data + 1007) ^ (self.buffer[3] + self.buffer[6]);
+        }
+        else {
+            self.buffer[6] = (self.buffer[4] + data) ^ self.buffer[6];
+        }
+
+        self.buffer[5] += ((data >> (0x20 - (data_last >> 27))) | (data << (data_last >> 27)));
+        self.buffer[8] = checksum_function(self.buffer[8], (data << (0x20 - (data_last >> 27))) | (data >> (data_last >> 27)), 1007);
+
+        // Now, we can't actually do all of the second half without data_next, but we can cache some of it
+
+        // was tmp1
+        //uint tmp1 = csum(state[15], (data_y >> (0x20 - (data_last >> 27))) | (data_y << (data_last >> 27)), 1007);
+        self.buffer[15] = checksum_function(self.buffer[15], (data >> (0x20 - (data_last >> 27))) | (data << (data_last >> 27)), 1007);
+        //state[15] = csum(tmp1, (data_x << (dataY >> 27)) | (data_x >> (0x20 - (data_y >> 27))), 1007);
+
+        // was tmp2
+        let tmp2 = (data << (0x20 - (data_last & 0x1f))) | (data >> (data_last & 0x1f));
+        self.buffer[14] = checksum_function(self.buffer[14], tmp2, 1007);
+
+        self.buffer[13] += (data >> (data & 0x1f)) | (data << (0x20 - (data & 0x1f)));
+
+        self.buffer[10] += data;
+        self.buffer[11] ^= data;
+        self.buffer[12] += self.buffer[8] ^ data;
+    }
+
     pub fn finalize_checksum(&mut self) {
         let mut buf = [self.buffer[0]; 4];
         
