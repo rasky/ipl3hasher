@@ -14,27 +14,22 @@ use cpu::*;
 
 use gumdrop::Options;
 
-fn parse_hex(s: &str) -> Result<u16, std::num::ParseIntError> {
-    u16::from_str_radix(s, 16)
-}
-
 fn parse_hex_u32(s: &str) -> Result<u32, std::num::ParseIntError> {
     u32::from_str_radix(s, 16)
 }
 
 #[derive(Debug, Options)]
 struct CSumOptions {
-    #[options(free, required, help = "The ROM whose checksum must be matched")]
-    golden: String,
-    #[options(
-        free,
-        required,
-        help = "The seed value for the hash",
-        parse(try_from_str = "parse_hex")
-    )]
-    seed: u16,
+    #[options(help = "print help message")]
+    help: bool,
     #[options(free, help = "The ROM to be modified")]
     source: String,
+    #[options(
+        short = "c",
+        default = "6102",
+        help = "The CIC for which a checksum must be calculated"
+    )]
+    cic: String,
     #[options(
         default = "400",
         help = "The number of threads to use",
@@ -58,32 +53,31 @@ struct CSumOptions {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let opts = CSumOptions::parse_args_default_or_exit();
-    let target_high;
-    let target_low;
-    if let Ok(mut file) = File::open(opts.golden) {
-        let mut rom: [u8; 4096] = [0; 4096];
-        if let Ok(_) = file.read_exact(&mut rom) {
-            let mut target_csum: ChecksumInfo<BigEndian> = ChecksumInfo::new(opts.seed as u32, rom);
-            target_csum.checksum(0, 1008);
-            target_csum.finalize_checksum();
-            target_high = target_csum.high;
-            target_low = target_csum.low;
-        } else {
-            panic!();
-        }
-    } else {
-        panic!();
-    }
+    let opts = CSumOptions::parse_args_default_or_exit();    
+    let seed: u8;
+    let target_high: u32;
+    let target_low: u32;
+    (seed, target_high, target_low) = match opts.cic.as_str() {
+        "6101" => (0x3f, 0x45cc, 0x73ee317a),
+        "6102" | "7101" => (0x3f, 0xa536, 0xc0f1d859),
+        "6103" | "7103" => (0x78, 0x586f, 0xd4709867),
+        "6105" | "7105" => (0x91, 0x8618, 0xa45bc2d3),
+        "6106" | "7106" => (0x85, 0x2bba, 0xd4e6eb74),
+        "8303" => (0xdd, 0x32b2, 0x94e2ab90),
+        "8401" => (0xdd, 0x6ee8, 0xd9e84970),
+        "5167" => (0xdd, 0x083c, 0x6c77e0b1),
+        "DDUS" => (0xde, 0x05ba, 0x2ef0a5f1),
+        _ => panic!("Unknown CIC"),
+    };
 
-    println!("Target checksum: {:#06X} {:08X}", target_high, target_low);
+    println!("Target seed and checksum: {:#02X} {:#06X} {:#08X}", seed, target_high, target_low);
 
     let mut pre_csum: ChecksumInfo<BigEndian>;
 
     if let Ok(mut file) = File::open(opts.source) {
         let mut rom: [u8; 4096] = [0; 4096];
         if let Ok(_) = file.read_exact(&mut rom) {
-            pre_csum = ChecksumInfo::new(opts.seed as u32, rom);
+            pre_csum = ChecksumInfo::new(seed as u32, rom);
             pre_csum.checksum(0, 1005);
         } else {
             panic!();
@@ -120,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .with_const("uint magic", "0x95DACFDC")
     .with_const("uint target_hi", format!("{}", target_high))
     .with_const("uint target_lo", format!("{}", target_low))
-    .with_const("uint seed", format!("{}", opts.seed as u32))
+    .with_const("uint seed", format!("{}", seed as u32))
 .with_helper_code(r#"
 uint csum(uint op1, uint op2, uint op3) {
     uint hi;
@@ -332,7 +326,7 @@ r#"
     // download from GPU and print out
     if finished_src {
         let res2 = futures::executor::block_on(res.get())?;
-        println!("{:#X?}", res2);
+        println!("match found with code: {:08X?} {:08X?}", res2[1], res2[0]);
     } else {
         println!("sorry, no dice");
     }
