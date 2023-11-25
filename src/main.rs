@@ -116,6 +116,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .with_const("uint target_lo", format!("{}", target_low))
     .with_const("uint seed", format!("{}", seed as u32))
 .with_helper_code(r#"
+#extension GL_ARB_gpu_shader_int64 : enable
+
 uint csum(uint op1, uint op2, uint op3) {
     uint hi;
     uint lo;
@@ -123,13 +125,10 @@ uint csum(uint op1, uint op2, uint op3) {
         op2 = op3;
     }
 
-    umulExtended(op1, op2, hi, lo);
-
-    if (hi - lo == 0) {
-        return lo;
-    }
-
-    return hi - lo;
+    uvec2 parts = unpackUint2x32(uint64_t(op1) * uint64_t(op2));
+    if (parts.y - parts.x == 0)
+        return op1;
+    return parts.y - parts.x;
 }
 
 uint[16] round_x(uint[16] state, uint data_x, uint data_y) {
