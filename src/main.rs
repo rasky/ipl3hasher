@@ -31,6 +31,11 @@ struct CSumOptions {
     )]
     cic: String,
     #[options(
+        default = "0",
+        help = "The GPU to use (0 for first, 1 for second, etc.)"
+    )]
+    device: i32,
+    #[options(
         default = "400",
         help = "The number of threads to use",
         parse(try_from_str = "parse_hex_u32")
@@ -73,6 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Target seed and checksum: {:#02X} {:#06X} {:#08X}", seed, target_high, target_low);
 
     let mut pre_csum: ChecksumInfo<BigEndian>;
+    let device = opts.device as usize;
 
     if let Ok(mut file) = File::open(opts.source) {
         let mut rom: [u8; 4096] = [0; 4096];
@@ -90,6 +96,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // this should be called before every time when you assume you have devices to use
     // that goes for both library users and application users
     futures::executor::block_on(assert_device_pool_initialized());
+    select(|idx, _info| {
+        idx == device
+    })?;
 
     println!("{:?}", take()?.lock().unwrap().info.as_ref().unwrap());
 
