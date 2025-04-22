@@ -54,7 +54,11 @@ impl<E: ByteOrder> ChecksumInfo<E> {
     pub fn checksum(&mut self, start: u32, count: u32) {
         let mut data_idx = (start as usize) * 4;
         let mut loop_idx = start;
-        let mut data = E::read_u32(&self.rom[(0x40+data_idx)..]);
+        let mut data  = E::read_u32(if data_idx == 0 {
+            &self.rom[(0x40+data_idx)..]
+        } else {
+            &self.rom[(0x40+data_idx-4)..]
+        });
         
         loop {
             loop_idx += 1;
